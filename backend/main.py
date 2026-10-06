@@ -4,7 +4,9 @@ from fastapi import (
     Depends
 )
 
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import (
+    CORSMiddleware
+)
 
 from fastapi.security import (
     HTTPBearer,
@@ -22,9 +24,13 @@ from auth import (
     get_user_id_from_token
 )
 
+from ai_assistant import (
+    generate_ai_reply
+)
+
 
 # ==========================================
-# CREATE FASTAPI APP
+# APP
 # ==========================================
 
 app = FastAPI()
@@ -33,16 +39,21 @@ app = FastAPI()
 # ==========================================
 # CORS
 # ==========================================
+
 app.add_middleware(
     CORSMiddleware,
+
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:5174",
         "http://127.0.0.1:5174"
     ],
+
     allow_credentials=True,
+
     allow_methods=["*"],
+
     allow_headers=["*"],
 )
 
@@ -61,7 +72,9 @@ def get_current_user_id(
 
     token = credentials.credentials
 
-    user_id = get_user_id_from_token(token)
+    user_id = get_user_id_from_token(
+        token
+    )
 
     if user_id is None:
 
@@ -74,7 +87,7 @@ def get_current_user_id(
 
 
 # ==========================================
-# PYDANTIC MODELS
+# MODELS
 # ==========================================
 
 class ExpenseCreate(BaseModel):
@@ -98,6 +111,11 @@ class UserLogin(BaseModel):
     password: str
 
 
+class ChatRequest(BaseModel):
+
+    message: str
+
+
 # ==========================================
 # HOME
 # ==========================================
@@ -106,7 +124,8 @@ class UserLogin(BaseModel):
 def home():
 
     return {
-        "message": "Expense Dashboard API is running"
+        "message":
+            "Expense Dashboard API is running"
     }
 
 
@@ -114,22 +133,37 @@ def home():
 # REGISTER
 # ==========================================
 
-@app.post("/register", status_code=201)
-def register_user(user: UserRegister):
+@app.post(
+    "/register",
+    status_code=201
+)
+def register_user(
+    user: UserRegister
+):
 
     connection = get_connection()
 
     try:
-        email = user.email.strip().lower()
 
-        existing_user = connection.execute(
-            """
-            SELECT id
-            FROM users
-            WHERE email = %s
-            """,
-            (email,)
-        ).fetchone()
+        email = (
+            user.email
+            .strip()
+            .lower()
+        )
+
+
+        existing_user = (
+            connection.execute(
+                """
+                SELECT id
+                FROM users
+                WHERE LOWER(email) = %s
+                """,
+                (email,)
+            )
+            .fetchone()
+        )
+
 
         if existing_user is not None:
 
@@ -138,9 +172,11 @@ def register_user(user: UserRegister):
                 detail="Email already registered"
             )
 
+
         hashed_password = hash_password(
             user.password
         )
+
 
         cursor = connection.execute(
             """
@@ -150,9 +186,17 @@ def register_user(user: UserRegister):
                 email,
                 hashed_password
             )
-            VALUES (%s, %s, %s)
+
+            VALUES
+            (
+                %s,
+                %s,
+                %s
+            )
+
             RETURNING id
             """,
+
             (
                 user.name,
                 email,
@@ -160,15 +204,21 @@ def register_user(user: UserRegister):
             )
         )
 
-        new_user_id = cursor.fetchone()[0]
+
+        new_user_id = (
+            cursor.fetchone()[0]
+        )
+
 
         connection.commit()
+
 
         return {
             "id": new_user_id,
             "name": user.name,
             "email": email
         }
+
 
     finally:
 
@@ -180,55 +230,79 @@ def register_user(user: UserRegister):
 # ==========================================
 
 @app.post("/login")
-def login_user(user: UserLogin):
+def login_user(
+    user: UserLogin
+):
 
     connection = get_connection()
 
     try:
-        email = user.email.strip().lower()
 
-        existing_user = connection.execute(
-            """
-            SELECT id, email, hashed_password
-            FROM users
-            WHERE LOWER(email) = %s
-            """,
-            (email,)
-        ).fetchone()
-
-        print("LOGIN EMAIL:", email)
-        print("USER FOUND:", existing_user is not None)
-
-        if existing_user is None:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid email or password"
-            )
-
-        user_id = existing_user[0]
-        hashed_password = existing_user[2]
-
-        password_correct = verify_password(
-            user.password,
-            hashed_password
+        email = (
+            user.email
+            .strip()
+            .lower()
         )
 
-        print("PASSWORD CORRECT:", password_correct)
 
-        if not password_correct:
+        existing_user = (
+            connection.execute(
+                """
+                SELECT
+                    id,
+                    email,
+                    hashed_password
+
+                FROM users
+
+                WHERE LOWER(email) = %s
+                """,
+
+                (email,)
+            )
+            .fetchone()
+        )
+
+
+        if existing_user is None:
+
             raise HTTPException(
                 status_code=401,
                 detail="Invalid email or password"
             )
 
-        token = create_access_token(user_id)
+
+        user_id = existing_user[0]
+
+        hashed_password = (
+            existing_user[2]
+        )
+
+
+        if not verify_password(
+            user.password,
+            hashed_password
+        ):
+
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password"
+            )
+
+
+        token = create_access_token(
+            user_id
+        )
+
 
         return {
             "access_token": token,
             "token_type": "bearer"
         }
 
+
     finally:
+
         connection.close()
 
 
@@ -238,42 +312,68 @@ def login_user(user: UserLogin):
 
 @app.get("/expenses")
 def get_expenses(
+
     user_id: int = Depends(
         get_current_user_id
     )
+
 ):
 
     connection = get_connection()
 
     try:
 
-        cursor = connection.execute(
-            """
-            SELECT
-                id,
-                title,
-                amount,
-                category,
-                expense_date
-            FROM expenses
-            WHERE user_id = %s
-            ORDER BY id DESC
-            """,
-            (user_id,)
+        rows = (
+            connection.execute(
+                """
+                SELECT
+                    id,
+                    title,
+                    amount,
+                    category,
+                    expense_date
+
+                FROM expenses
+
+                WHERE user_id = %s
+
+                ORDER BY
+                    expense_date DESC,
+                    id DESC
+                """,
+
+                (user_id,)
+            )
+            .fetchall()
         )
 
-        rows = cursor.fetchall()
 
-        return [
-            {
-                "id": row[0],
-                "title": row[1],
-                "amount": float(row[2]),
-                "category": row[3],
-                "expense_date": row[4]
-            }
-            for row in rows
-        ]
+        expenses = []
+
+
+        for row in rows:
+
+            expenses.append(
+                {
+                    "id": row[0],
+
+                    "title": row[1],
+
+                    "amount": float(
+                        row[2]
+                    ),
+
+                    "category": row[3],
+
+                    "expense_date": str(
+                        row[4]
+                    )
+                }
+            )
+
+
+        return expenses
+
 
     finally:
 
@@ -289,11 +389,13 @@ def get_expenses(
     status_code=201
 )
 def add_expense(
+
     expense: ExpenseCreate,
 
     user_id: int = Depends(
         get_current_user_id
     )
+
 ):
 
     connection = get_connection()
@@ -310,9 +412,19 @@ def add_expense(
                 expense_date,
                 user_id
             )
-            VALUES (%s, %s, %s, %s, %s)
+
+            VALUES
+            (
+                %s,
+                %s,
+                %s,
+                %s,
+                %s
+            )
+
             RETURNING id
             """,
+
             (
                 expense.title,
                 expense.amount,
@@ -322,17 +434,31 @@ def add_expense(
             )
         )
 
-        new_id = cursor.fetchone()[0]
+
+        new_id = (
+            cursor.fetchone()[0]
+        )
+
 
         connection.commit()
 
+
         return {
             "id": new_id,
-            "title": expense.title,
-            "amount": expense.amount,
-            "category": expense.category,
-            "expense_date": expense.expense_date
+
+            "title":
+                expense.title,
+
+            "amount":
+                expense.amount,
+
+            "category":
+                expense.category,
+
+            "expense_date":
+                expense.expense_date
         }
+
 
     finally:
 
@@ -343,8 +469,11 @@ def add_expense(
 # UPDATE EXPENSE
 # ==========================================
 
-@app.put("/expenses/{expense_id}")
+@app.put(
+    "/expenses/{expense_id}"
+)
 def update_expense(
+
     expense_id: int,
 
     expense: ExpenseCreate,
@@ -352,25 +481,32 @@ def update_expense(
     user_id: int = Depends(
         get_current_user_id
     )
+
 ):
 
     connection = get_connection()
 
     try:
 
-        existing_expense = connection.execute(
-            """
-            SELECT id
-            FROM expenses
+        existing_expense = (
+            connection.execute(
+                """
+                SELECT id
 
-            WHERE id = %s
-            AND user_id = %s
-            """,
-            (
-                expense_id,
-                user_id
+                FROM expenses
+
+                WHERE id = %s
+                AND user_id = %s
+                """,
+
+                (
+                    expense_id,
+                    user_id
+                )
             )
-        ).fetchone()
+            .fetchone()
+        )
+
 
         if existing_expense is None:
 
@@ -378,6 +514,7 @@ def update_expense(
                 status_code=404,
                 detail="Expense not found"
             )
+
 
         connection.execute(
             """
@@ -392,6 +529,7 @@ def update_expense(
             WHERE id = %s
             AND user_id = %s
             """,
+
             (
                 expense.title,
                 expense.amount,
@@ -402,15 +540,26 @@ def update_expense(
             )
         )
 
+
         connection.commit()
+
 
         return {
             "id": expense_id,
-            "title": expense.title,
-            "amount": expense.amount,
-            "category": expense.category,
-            "expense_date": expense.expense_date
+
+            "title":
+                expense.title,
+
+            "amount":
+                expense.amount,
+
+            "category":
+                expense.category,
+
+            "expense_date":
+                expense.expense_date
         }
+
 
     finally:
 
@@ -421,13 +570,17 @@ def update_expense(
 # DELETE EXPENSE
 # ==========================================
 
-@app.delete("/expenses/{expense_id}")
+@app.delete(
+    "/expenses/{expense_id}"
+)
 def delete_expense(
+
     expense_id: int,
 
     user_id: int = Depends(
         get_current_user_id
     )
+
 ):
 
     connection = get_connection()
@@ -441,13 +594,16 @@ def delete_expense(
             WHERE id = %s
             AND user_id = %s
             """,
+
             (
                 expense_id,
                 user_id
             )
         )
 
+
         connection.commit()
+
 
         if cursor.rowcount == 0:
 
@@ -456,10 +612,117 @@ def delete_expense(
                 detail="Expense not found"
             )
 
+
         return {
             "message":
                 "Expense deleted successfully"
         }
+
+
+    finally:
+
+        connection.close()
+
+
+# ==========================================
+# AI CHATBOT
+# ==========================================
+
+@app.post("/chat")
+def chat_with_ai(
+
+    request: ChatRequest,
+
+    user_id: int = Depends(
+        get_current_user_id
+    )
+
+):
+
+    connection = get_connection()
+
+    try:
+
+        # IMPORTANT:
+        # Only retrieve expenses that belong
+        # to the logged-in user.
+
+        rows = (
+            connection.execute(
+                """
+                SELECT
+                    title,
+                    amount,
+                    category,
+                    expense_date
+
+                FROM expenses
+
+                WHERE user_id = %s
+
+                ORDER BY expense_date DESC
+                """,
+
+                (user_id,)
+            )
+            .fetchall()
+        )
+
+
+        expenses = []
+
+
+        for row in rows:
+
+            expenses.append(
+                {
+                    "title":
+                        row[0],
+
+                    "amount":
+                        float(row[1]),
+
+                    "category":
+                        row[2],
+
+                    "expense_date":
+                        str(row[3])
+                }
+            )
+
+
+        reply = generate_ai_reply(
+            request.message,
+            expenses
+        )
+
+
+        return {
+            "reply": reply
+        }
+
+
+    except HTTPException:
+
+        raise
+
+
+    except Exception as error:
+
+        print(
+            "AI CHAT ERROR:",
+            error
+        )
+
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "AI assistant could "
+                "not respond"
+            )
+        )
+
 
     finally:
 

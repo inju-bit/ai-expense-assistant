@@ -7,34 +7,43 @@ from dotenv import load_dotenv
 from pwdlib import PasswordHash
 
 
+# ==========================================
+# LOAD .ENV
+# ==========================================
+
 BASE_DIR = Path(__file__).resolve().parent
 
 load_dotenv(BASE_DIR / ".env")
 
 
-password_hash = PasswordHash.recommended()
+# ==========================================
+# JWT SETTINGS
+# ==========================================
 
 SECRET_KEY = os.getenv("SECRET_KEY")
+
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
 
 if not SECRET_KEY:
     raise RuntimeError(
         "SECRET_KEY is missing from backend/.env"
     )
 
-# -------------------------------
-# HASH PASSWORD
-# -------------------------------
+
+# ==========================================
+# PASSWORD HASHING
+# ==========================================
+
+password_hash = PasswordHash.recommended()
+
 
 def hash_password(password: str):
 
     return password_hash.hash(password)
 
-
-# -------------------------------
-# VERIFY PASSWORD
-# -------------------------------
 
 def verify_password(
     plain_password: str,
@@ -47,9 +56,9 @@ def verify_password(
     )
 
 
-# -------------------------------
+# ==========================================
 # CREATE JWT TOKEN
-# -------------------------------
+# ==========================================
 
 def create_access_token(user_id: int):
 
@@ -72,9 +81,9 @@ def create_access_token(user_id: int):
     )
 
 
-# -------------------------------
-# READ USER ID FROM JWT
-# -------------------------------
+# ==========================================
+# READ JWT TOKEN
+# ==========================================
 
 def get_user_id_from_token(token: str):
 
@@ -100,4 +109,3 @@ def get_user_id_from_token(token: str):
     ):
 
         return None
-    
